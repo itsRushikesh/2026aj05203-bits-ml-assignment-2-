@@ -126,7 +126,7 @@ ml-classification-app/
 - All-models comparison table with colour highlighting (green = best)
 - Bar chart comparison across all models
 
-**Live App:** [https://YOUR-APP.streamlit.app](https://YOUR-APP.streamlit.app)
+**Live App:** [https://bits2026aj05203mlclassifier.streamlit.app/](https://bits2026aj05203mlclassifier.streamlit.app/)
 *(Replace with your Streamlit Cloud URL after deployment)*
 
 ---
@@ -135,7 +135,7 @@ ml-classification-app/
 
 ```bash
 # 1. Clone repo
-git clone https://github.com/YOUR_USERNAME/ml-classification-app.git
+git clone https://github.com/itsRushikesh/2026aj05203-bits-ml-assignment-2-.git
 cd ml-classification-app
 
 # 2. Install dependencies
