@@ -1,0 +1,247 @@
+"""
+Telco Customer Churn – Interactive ML Classification Dashboard
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score, roc_auc_score, precision_score,
+    recall_score, f1_score, matthews_corrcoef,
+    confusion_matrix, classification_report, roc_curve
+)
+
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="ML Classifier – Telco Churn",
+    page_icon="📡",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+MODEL_OPTIONS = {
+    "Logistic Regression":    "models/logistic_regression.joblib",
+    "Decision Tree":          "models/decision_tree.joblib",
+    "K-Nearest Neighbor":     "models/knn.joblib",
+    "Naive Bayes (Gaussian)": "models/naive_bayes.joblib",
+    "Support Vector Machine": "models/svm.joblib",
+}
+
+# ── Cached loaders ───────────────────────────────────────────────────────────
+@st.cache_resource
+def load_artifacts():
+    scaler        = joblib.load("models/scaler.joblib")
+    label_enc     = joblib.load("models/label_encoders.joblib")
+    feature_names = joblib.load("models/feature_names.joblib")
+    return scaler, label_enc, feature_names
+
+@st.cache_resource
+def load_model(path: str):
+    return joblib.load(path)
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.image("https://upload.wikimedia.org/wikipedia/en/d/d3/BITS_Pilani-Logo.svg", width=160)
+    st.markdown("## Controls")
+    selected_model_name = st.selectbox("Select ML Model", list(MODEL_OPTIONS.keys()))
+    st.markdown("---")
+    st.markdown("### Upload Test Data")
+    uploaded = st.file_uploader(
+        "Upload test_data.csv",
+        type=["csv"],
+        help="Must contain all 19 feature columns + target column 'Churn' (integer-encoded)"
+    )
+    st.markdown("---")
+    st.info(
+        "**Expected columns (integer-encoded):**\n"
+        "gender, SeniorCitizen, Partner, Dependents, tenure, PhoneService, "
+        "MultipleLines, InternetService, OnlineSecurity, OnlineBackup, "
+        "DeviceProtection, TechSupport, StreamingTV, StreamingMovies, "
+        "Contract, PaperlessBilling, PaymentMethod, MonthlyCharges, "
+        "TotalCharges, **Churn**"
+    )
+    st.markdown("**Assignment 2 | M.Tech AIML**")
+
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title("📡 Telco Customer Churn – ML Classification Dashboard")
+st.caption("BITS Pilani | M.Tech AIML | Machine Learning Assignment 2")
+st.markdown("---")
+
+# ── Load artifacts ────────────────────────────────────────────────────────────
+try:
+    scaler, label_encoders, feature_names = load_artifacts()
+except FileNotFoundError:
+    st.error(
+        "Model artifacts not found. Run `python train_models.py` first "
+        "to train and save models, then push all files to GitHub."
+    )
+    st.stop()
+
+# ── About section (shown when no file is uploaded) ────────────────────────────
+if uploaded is None:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("About This App")
+        st.markdown("""
+This interactive dashboard evaluates five ML classifiers trained on the
+**Telco Customer Churn** dataset (Kaggle/IBM).
+
+**Models available:**
+- Logistic Regression
+- Decision Tree (max_depth=10)
+- K-Nearest Neighbor (k=7)
+- Naive Bayes (Gaussian)
+- Support Vector Machine (RBF)
+
+**How to use:**
+1. Upload `test_data.csv` from the sidebar
+2. Select a model
+3. View metrics, confusion matrix, and ROC curve
+        """)
+    with c2:
+        st.subheader("Evaluation Metrics")
+        st.markdown("""
+| Metric | Description |
+|--------|-------------|
+| **Accuracy** | Overall correct predictions |
+| **AUC** | Area under the ROC curve |
+| **Precision** | Positive predictive value |
+| **Recall** | True positive rate |
+| **F1 Score** | Harmonic mean of Precision & Recall |
+| **MCC** | Matthews Correlation Coefficient |
+        """)
+    st.subheader("Dataset: Telco Customer Churn (Kaggle/IBM)")
+    st.markdown("""
+| Property | Detail |
+|----------|--------|
+| Source | Kaggle – IBM Sample Data (WA_Fn-UseC_-Telco-Customer-Churn) |
+| Task | Binary Classification |
+| Features | 19 (gender, tenure, contract, charges, services, …) |
+| Instances | 7 043 |
+| Target | `Churn` — did the customer leave? (Yes=1 / No=0) |
+    """)
+    st.stop()
+
+# ── Process uploaded file ─────────────────────────────────────────────────────
+try:
+    df_up = pd.read_csv(uploaded)
+except Exception as exc:
+    st.error(f"Could not read CSV: {exc}")
+    st.stop()
+
+missing = [c for c in feature_names + ["Churn"] if c not in df_up.columns]
+if missing:
+    st.error(f"Missing columns in uploaded file: {missing}")
+    st.info("Make sure you are uploading the `test_data.csv` generated by `train_models.py`.")
+    st.stop()
+
+X_up   = df_up[feature_names]
+y_true = df_up["Churn"]
+X_sc   = scaler.transform(X_up)
+
+st.success(f"File loaded: **{len(df_up)} rows x {len(df_up.columns)} columns**")
+
+# ── Load selected model and predict ──────────────────────────────────────────
+model  = load_model(MODEL_OPTIONS[selected_model_name])
+y_pred = model.predict(X_sc)
+y_prob = model.predict_proba(X_sc)[:, 1]
+
+acc  = accuracy_score(y_true, y_pred)
+auc  = roc_auc_score(y_true, y_prob)
+prec = precision_score(y_true, y_pred, zero_division=0)
+rec  = recall_score(y_true, y_pred, zero_division=0)
+f1   = f1_score(y_true, y_pred, zero_division=0)
+mcc  = matthews_corrcoef(y_true, y_pred)
+
+# ── Metric cards ─────────────────────────────────────────────────────────────
+st.subheader(f"Evaluation: **{selected_model_name}**")
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1.metric("Accuracy",  f"{acc:.4f}")
+col2.metric("AUC Score", f"{auc:.4f}")
+col3.metric("Precision", f"{prec:.4f}")
+col4.metric("Recall",    f"{rec:.4f}")
+col5.metric("F1 Score",  f"{f1:.4f}")
+col6.metric("MCC",       f"{mcc:.4f}")
+
+st.markdown("---")
+
+# ── Confusion Matrix + ROC Curve ─────────────────────────────────────────────
+c_cm, c_roc = st.columns(2)
+
+with c_cm:
+    st.subheader("Confusion Matrix")
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(4, 3))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax,
+                xticklabels=["No (0)", "Yes (1)"],
+                yticklabels=["No (0)", "Yes (1)"])
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    ax.set_title(f"Confusion Matrix – {selected_model_name}")
+    st.pyplot(fig)
+    plt.close(fig)
+
+with c_roc:
+    st.subheader("ROC Curve")
+    fpr, tpr, _ = roc_curve(y_true, y_prob)
+    fig2, ax2 = plt.subplots(figsize=(4, 3))
+    ax2.plot(fpr, tpr, color="darkorange", lw=2, label=f"AUC = {auc:.4f}")
+    ax2.plot([0, 1], [0, 1], "navy", lw=1, linestyle="--", label="Random")
+    ax2.set_xlabel("False Positive Rate")
+    ax2.set_ylabel("True Positive Rate")
+    ax2.set_title(f"ROC Curve – {selected_model_name}")
+    ax2.legend(loc="lower right")
+    st.pyplot(fig2)
+    plt.close(fig2)
+
+# ── Classification Report ────────────────────────────────────────────────────
+st.subheader("Classification Report")
+st.code(classification_report(y_true, y_pred, target_names=["No (0)", "Yes (1)"]))
+
+st.markdown("---")
+
+# ── All-models comparison ────────────────────────────────────────────────────
+st.subheader("All Models Comparison")
+
+with st.spinner("Evaluating all 5 models…"):
+    rows = []
+    for mname, mpath in MODEL_OPTIONS.items():
+        m   = load_model(mpath)
+        yp  = m.predict(X_sc)
+        ypr = m.predict_proba(X_sc)[:, 1]
+        rows.append({
+            "Model":     mname,
+            "Accuracy":  round(accuracy_score(y_true, yp), 4),
+            "AUC":       round(roc_auc_score(y_true, ypr), 4),
+            "Precision": round(precision_score(y_true, yp, zero_division=0), 4),
+            "Recall":    round(recall_score(y_true, yp, zero_division=0), 4),
+            "F1":        round(f1_score(y_true, yp, zero_division=0), 4),
+            "MCC":       round(matthews_corrcoef(y_true, yp), 4),
+        })
+
+cmp_df = pd.DataFrame(rows).set_index("Model")
+st.dataframe(
+    cmp_df.style.highlight_max(color="lightgreen", axis=0)
+              .highlight_min(color="lightyellow", axis=0),
+    use_container_width=True,
+)
+
+# Bar chart
+fig3, ax3 = plt.subplots(figsize=(10, 4))
+cmp_df[["Accuracy", "AUC", "F1", "MCC"]].plot(kind="bar", ax=ax3, colormap="tab10")
+ax3.set_title("Model Comparison – Key Metrics")
+ax3.set_ylabel("Score")
+ax3.set_xticklabels(cmp_df.index, rotation=20, ha="right", fontsize=9)
+ax3.legend(loc="lower right")
+ax3.set_ylim(0, 1.15)
+ax3.grid(axis="y", alpha=0.4)
+st.pyplot(fig3)
+plt.close(fig3)
+
+st.caption("Green = highest score per metric | Yellow = lowest score per metric")
